@@ -11,14 +11,66 @@ Author   : Wind Turbine Analysis Project
 Audience : 4th-year Electrical & Electronics Engineering students (renewable energy focus)
 """
 
+import argparse
+import os
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")          
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# ── CLI argument parsing ───────────────────────────────────────────────────────
+_parser = argparse.ArgumentParser(description="Wind Turbine SCADA Analysis")
+_parser.add_argument(
+    "--data",
+    default=None,
+    help="Path to T1.csv dataset. If omitted, the script searches common locations.",
+)
+_args, _ = _parser.parse_known_args()   # parse_known_args so Jupyter kernels don't crash
+
+def _find_dataset(explicit_path: str | None) -> str:
+    """
+    Resolve the dataset path in this order:
+      1. Explicit --data argument
+      2. Same directory as this script
+      3. Current working directory
+      4. Downloads folder (Windows & Linux/macOS)
+    Raises FileNotFoundError with clear instructions if nothing is found.
+    """
+    candidates = []
+    if explicit_path:
+        candidates.append(explicit_path)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.join(script_dir, "T1.csv"))
+    candidates.append(os.path.join(os.getcwd(), "T1.csv"))
+
+    # Common Downloads locations
+    home = os.path.expanduser("~")
+    candidates += [
+        os.path.join(home, "Downloads", "T1.csv"),
+        os.path.join(home, "Downloads", "T1.csv", "T1.csv"),  # double-nested zip artifact
+        os.path.join(home, "İndirilenler", "T1.csv"),         # Turkish Windows
+    ]
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+
+    searched = "\n  ".join(candidates)
+    raise FileNotFoundError(
+        f"T1.csv not found. Searched:\n  {searched}\n\n"
+        "Fix — either:\n"
+        "  A) Put T1.csv in the same folder as this script, OR\n"
+        "  B) Run:  python wind_turbine_analysis.py --data C:\\path\\to\\T1.csv"
+    )
+
+DATA_PATH = _find_dataset(_args.data)
 
 # ── Global style ──────────────────────────────────────────────────────────────
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.05)
@@ -29,9 +81,6 @@ RATED_POWER_KW   = 3_600   # kW
 CUT_IN_MS        = 3.5     # m/s  — turbine starts generating below this
 CUT_OUT_MS       = 25.0    # m/s  — turbine shuts down above this for safety
 RATED_WIND_MS    = 12.0    # m/s  — approximate wind speed at rated power
-
-# Path to the raw dataset — adjust if needed
-DATA_PATH = r"C:\Users\gorke\OneDrive\Desktop\github proje denemesi\T1.csv\T1.csv"
 
 # =============================================================================
 # === SECTION 1 — DATA LOADING & UNDERSTANDING ================================
@@ -58,7 +107,11 @@ col_descriptions = {
     "Date/Time"                     : "10-minute timestamp (day month year HH:MM)",
     "LV ActivePower (kW)"           : "Actual electrical power delivered to the grid (kW)",
     "Wind Speed (m/s)"              : "Wind speed measured at hub height (m/s)",
-    "Theoretical_Power_Curve (KWh)" : "Manufacturer's expected output from the power curve (kWh)",
+    "Theoretical_Power_Curve (KWh)" : "Manufacturer's expected output from the power curve (kWh) — "
+                                      "NOTE: despite the 'KWh' label in the raw file, values are "
+                                      "effectively average power over the 10-min interval. "
+                                      "Dividing by 6 converts to kWh energy; here we treat it as "
+                                      "a comparable power reference (kW) for ratio calculations.",
     "Wind Direction (°)"            : "Wind bearing in degrees (0 = North, clockwise)",
 }
 print("\n[5] Column descriptions:")
@@ -151,6 +204,12 @@ mean_ws   = df["wind_speed_ms"].mean()
 peak_pwr  = df["active_power_kw"].max()
 curtailed = df["is_curtailed"].sum()
 
+overall_efficiency = (
+    df["active_power_kw"].clip(lower=0).sum()
+    / df["theoretical_power_kwh"].sum()
+    * 100
+)
+
 print(f"\n[2] Mean capacity factor    : {mean_cf:.2f} %")
 print(f"[3] Mean wind speed         : {mean_ws:.2f} m/s")
 print(f"[4] Peak active power       : {peak_pwr:,.1f} kW")
@@ -210,7 +269,6 @@ ax2.legend(fontsize=8)
 
 plt.tight_layout()
 plt.savefig("plot1_wind_speed_distribution.png")
-plt.show()
 print("  → Saved: plot1_wind_speed_distribution.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -249,7 +307,6 @@ ax2.legend(fontsize=8)
 
 plt.tight_layout()
 plt.savefig("plot2_power_distribution_monthly_cf.png")
-plt.show()
 print("  → Saved: plot2_power_distribution_monthly_cf.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,7 +353,6 @@ ax.set_ylim(-200, RATED_POWER_KW + 200)
 
 plt.tight_layout()
 plt.savefig("plot3_power_curve.png")
-plt.show()
 print("  → Saved: plot3_power_curve.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -321,7 +377,6 @@ ax.set_title("Lower-triangle Pearson Correlations")
 
 plt.tight_layout()
 plt.savefig("plot4_correlation_heatmap.png")
-plt.show()
 print("  → Saved: plot4_correlation_heatmap.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -347,7 +402,6 @@ ax.set_title("Mean Power by Hour and Month — reveals daily & seasonal patterns
 
 plt.tight_layout()
 plt.savefig("plot5_power_heatmap_hour_month.png")
-plt.show()
 print("  → Saved: plot5_power_heatmap_hour_month.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -397,7 +451,6 @@ ax.legend(loc="lower right", bbox_to_anchor=(1.25, 0.0), fontsize=9)
 
 plt.tight_layout()
 plt.savefig("plot6_wind_rose.png")
-plt.show()
 print("  → Saved: plot6_wind_rose.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -405,7 +458,11 @@ print("  → Saved: plot6_wind_rose.png")
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n  Generating Plot 7 — Actual vs Theoretical Power …")
 
-overall_efficiency = df["active_power_kw"].sum() / df["theoretical_power_kwh"].sum() * 100
+overall_efficiency = (
+    df["active_power_kw"].clip(lower=0).sum()
+    / df["theoretical_power_kwh"].sum()
+    * 100
+)  # already computed in Section 3; kept here for self-contained reference
 
 sample2 = df.sample(n=6_000, random_state=7)
 
@@ -438,7 +495,6 @@ ax.legend(fontsize=9)
 
 plt.tight_layout()
 plt.savefig("plot7_actual_vs_theoretical.png")
-plt.show()
 print("  → Saved: plot7_actual_vs_theoretical.png")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -478,7 +534,6 @@ ax_bot.legend(fontsize=9)
 
 plt.tight_layout()
 plt.savefig("plot8_monthly_energy_curtailment.png")
-plt.show()
 print("  → Saved: plot8_monthly_energy_curtailment.png")
 
 
@@ -507,7 +562,6 @@ ax.set_title("Feature Correlations vs Active Power")
 fig.suptitle("Section 5 — Feature Correlation Ranking", fontsize=13, fontweight="bold")
 plt.tight_layout()
 plt.savefig("plot9_feature_correlations.png")
-plt.show()
 print("  → Saved: plot9_feature_correlations.png")
 
 # ── 5.2  Wind speed bin analysis ─────────────────────────────────────────────
@@ -634,3 +688,4 @@ print(conclusion)
 print("=" * 70)
 print("Analysis complete. All plots saved as PNG files in the working directory.")
 print("=" * 70)
+
