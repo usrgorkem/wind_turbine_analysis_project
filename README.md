@@ -54,11 +54,18 @@ pip install pandas numpy matplotlib seaborn
 
 ### 2. Place the dataset
 
-Make sure `T1.csv` is at the path specified in `DATA_PATH` inside the script,
-or edit that variable to point to wherever you stored the file:
+## 2. Place the dataset
 
-```python
-DATA_PATH = r"C:\Users\gorke\Downloads\T1.csv\T1.csv"
+The script automatically searches for `T1.csv` in the following locations:
+
+- Same directory as the script  
+- Current working directory  
+- Downloads folder  
+
+Alternatively, you can specify a custom path:
+
+```bash
+python wind_turbine_analysis.py --data "C:\path\to\T1.csv"
 ```
 
 ### 3. Run the analysis
